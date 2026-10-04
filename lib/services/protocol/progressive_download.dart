@@ -36,6 +36,36 @@ class SpotifyAudioHeader {
     final bytes = Uint8List.fromList(head.sublist(start, start + AudioNormalization.byteLength));
     return AudioNormalization.parse(bytes) == null ? null : bytes;
   }
+
+  /// 明文校验：[head] 是否像一个可直接解码的音频文件开头。
+  ///
+  /// 用于拿不到音频密钥、按明文下载的播客单集（与 librespot 相同的「无密钥不解密」策略）：
+  /// 文件其实是加密的话，开头是随机字节，这里会判为 false，避免把噪音交给播放器或写进缓存。
+  /// 认得：Ogg（含 Spotify 私有头）、MP3（ID3 标签或合法帧头）、FLAC、MP4/M4A、WAV。
+  static bool looksLikePlainAudio(Uint8List head) {
+    bool tag(int offset, String magic) =>
+        head.length >= offset + magic.length &&
+        String.fromCharCodes(head.sublist(offset, offset + magic.length)) == magic;
+    if (tag(0, 'OggS') || tag(oggHeaderEnd, 'OggS')) return true;
+    if (tag(0, 'ID3') || tag(0, 'fLaC') || tag(0, 'RIFF') || tag(4, 'ftyp')) return true;
+    // MPEG 音频帧头：11 位同步字，且 版本 / 层 / 码率 / 采样率 都不是保留值
+    if (head.length >= 4 && head[0] == 0xFF && (head[1] & 0xE0) == 0xE0) {
+      final version = (head[1] >> 3) & 0x03;
+      final layer = (head[1] >> 1) & 0x03;
+      final bitrate = head[2] >> 4;
+      final sampleRate = (head[2] >> 2) & 0x03;
+      return version != 1 && layer != 0 && bitrate != 0x0F && sampleRate != 0x03;
+    }
+    return false;
+  }
+}
+
+/// 明文下载的文件头不像音频（多半其实是加密的），见 [SpotifyAudioHeader.looksLikePlainAudio]。
+class UnrecognizedAudioException implements Exception {
+  const UnrecognizedAudioException();
+
+  @override
+  String toString() => 'UnrecognizedAudioException: 文件头不是可识别的音频格式';
 }
 
 /// 可边下载边播放的音频（已解密、已去掉私有头的字节流）。
@@ -78,6 +108,10 @@ class ProgressiveDownload implements ProgressiveAudio {
   /// 单个地址失败后重试的总次数上限（含轮换到其他地址）。
   final int maxAttempts;
 
+  /// 头部到达时的校验（返回 false 则以 [UnrecognizedAudioException] 终止下载，不再重试）；
+  /// 为空时不校验。明文下载的播客单集用它识别「其实是加密文件」。
+  final bool Function(Uint8List head)? validateHead;
+
   ProgressiveDownload({
     required this.urls,
     required this.decrypt,
@@ -85,6 +119,7 @@ class ProgressiveDownload implements ProgressiveAudio {
     required this.client,
     this.backend = const InlineDecryptBackend(),
     this.maxAttempts = 4,
+    this.validateHead,
   });
 
   /// 解密后的完整文件（含私有头）；总长度未知时下载期间为 null。
@@ -112,7 +147,12 @@ class ProgressiveDownload implements ProgressiveAudio {
   int get length => (_buffer?.length ?? 0) - _skip;
 
   @override
-  String get contentType => format.extension == 'ogg' ? 'audio/ogg' : 'audio/mpeg';
+  String get contentType => switch (format.extension) {
+    'ogg' => 'audio/ogg',
+    'm4a' => 'audio/mp4',
+    'flac' => 'audio/flac',
+    _ => 'audio/mpeg',
+  };
 
   @override
   double get progress {
@@ -164,6 +204,8 @@ class ProgressiveDownload implements ProgressiveAudio {
         _complete();
         return;
       } catch (e) {
+        // 头部校验失败：内容本身不可用，换地址重试没有意义（_fail 已在 _advance 里调用）
+        if (_error != null) return;
         lastError = e;
       }
     }
@@ -174,6 +216,8 @@ class ProgressiveDownload implements ProgressiveAudio {
   Future<void> _fetch(String url) async {
     final resume = _received > 0 && _buffer != null;
     final request = http.Request('GET', Uri.parse(url));
+    // 外部托管的播客音频常经过多级统计跳转（podtrac → chartable → 实际 CDN）
+    request.maxRedirects = 10;
     if (resume) request.headers['Range'] = 'bytes=$_received-';
     final response = await client.send(request);
     final status = response.statusCode;
@@ -202,6 +246,8 @@ class ProgressiveDownload implements ProgressiveAudio {
           buffer.setRange(pos, pos + data.length, data);
           pos += data.length;
           if (pos > _received) _advance(pos);
+          final error = _error;
+          if (error != null) throw error;
         } else {
           pending!.add(data);
         }
@@ -215,6 +261,8 @@ class ProgressiveDownload implements ProgressiveAudio {
       if (bytes.isEmpty) throw StateError('CDN 返回空文件');
       _buffer = bytes;
       _advance(bytes.length);
+      final error = _error;
+      if (error != null) throw error;
     } else if (_received < buffer!.length) {
       throw StateError('下载中断（$_received/${buffer.length}）');
     }
@@ -236,6 +284,11 @@ class ProgressiveDownload implements ProgressiveAudio {
     final buffer = _buffer!;
     if (!_ready.isCompleted && (_received >= SpotifyAudioHeader.probeLength || _received >= buffer.length)) {
       final head = Uint8List.sublistView(buffer, 0, math.min(_received, SpotifyAudioHeader.probeLength));
+      final validate = validateHead;
+      if (validate != null && !validate(head)) {
+        _fail(const UnrecognizedAudioException());
+        return;
+      }
       _skip = SpotifyAudioHeader.skipFor(head, format);
       _normalizationBytes = SpotifyAudioHeader.normalizationBytesIn(head, _skip);
       _ready.complete();
@@ -252,6 +305,7 @@ class ProgressiveDownload implements ProgressiveAudio {
   }
 
   void _complete() {
+    if (_error != null) return;
     if (!_ready.isCompleted) _ready.complete();
     _done.complete();
     for (final listener in _progressListeners) {
@@ -262,6 +316,7 @@ class ProgressiveDownload implements ProgressiveAudio {
   }
 
   void _fail(Object error) {
+    if (_error != null) return;
     _error = error;
     if (!_ready.isCompleted) _ready.completeError(error);
     _done.completeError(error);

@@ -432,6 +432,8 @@ class SpotifyApiService {
       'tracks': <SpotifyTrack>[],
       'artists': <SpotifyArtist>[],
       'playlists': <SpotifyPlaylist>[],
+      'shows': <PodcastShow>[],
+      'episodes': <PodcastEpisode>[],
     };
     if (clean.isEmpty || !isConfigured) return empty;
 
@@ -442,6 +444,8 @@ class SpotifyApiService {
           'tracks': r.tracks,
           'artists': r.artists,
           'playlists': r.playlists,
+          'shows': r.shows,
+          'episodes': r.episodes,
         };
       } catch (e) {
         throw SpotifyDataException('搜索失败：$e');
@@ -449,7 +453,7 @@ class SpotifyApiService {
     }
 
     final data = await _getJson(
-      '/search?q=${Uri.encodeComponent(clean)}&type=track,artist,playlist&limit=10',
+      '/search?q=${Uri.encodeComponent(clean)}&type=track,artist,playlist,show,episode&limit=10',
     );
     List<T> parse<T>(String key, T Function(Map<String, dynamic>) from) {
       final items = (data[key] as Map<String, dynamic>?)?['items'];
@@ -462,8 +466,44 @@ class SpotifyApiService {
       'tracks': parse('tracks', SpotifyTrack.fromJson),
       'artists': parse('artists', SpotifyArtist.fromJson),
       'playlists': parse('playlists', SpotifyPlaylist.fromJson),
+      'shows': parse('shows', _showFromWebApi),
+      'episodes': parse('episodes', _episodeFromWebApi),
     };
   }
+
+  /// Web API 的 simplified show（搜索结果）。
+  static PodcastShow _showFromWebApi(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '';
+    return PodcastShow(
+      id: id,
+      uri: json['uri'] as String? ?? 'spotify:show:$id',
+      name: json['name'] as String? ?? '',
+      publisher: json['publisher'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      images: _webImages(json['images']),
+    );
+  }
+
+  /// Web API 的 simplified episode（搜索结果不带所属节目）。
+  static PodcastEpisode _episodeFromWebApi(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '';
+    final resume = json['resume_point'] as Map<String, dynamic>?;
+    return PodcastEpisode(
+      id: id,
+      uri: json['uri'] as String? ?? 'spotify:episode:$id',
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      durationMs: json['duration_ms'] as int? ?? 0,
+      releaseDate: json['release_date'] as String? ?? '',
+      images: _webImages(json['images']),
+      resumeMs: resume?['resume_position_ms'] as int? ?? 0,
+      played: resume?['fully_played'] == true,
+    );
+  }
+
+  static List<SpotifyImage> _webImages(Object? images) => images is List
+      ? images.whereType<Map<String, dynamic>>().map(SpotifyImage.fromJson).toList()
+      : const [];
 
   // ---------------------------------------------------------------------------
   // Spotify Connect 设备

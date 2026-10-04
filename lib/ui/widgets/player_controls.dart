@@ -66,6 +66,7 @@ class PlayPauseButton extends StatelessWidget {
   }
 }
 
+/// 随机播放；播放播客单集时换成「播放速度」（单集不需要随机，Spotify 同样的位置放倍速）。
 class ShuffleButton extends StatelessWidget {
   final double size;
   final Color inactiveColor;
@@ -75,6 +76,10 @@ class ShuffleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEpisode = context.select<PlaybackProvider, bool>((p) => p.isEpisode);
+    if (isEpisode) {
+      return PodcastSpeedButton(size: size, inactiveColor: inactiveColor, constraints: constraints);
+    }
     final shuffle = context.select<PlaybackProvider, bool>((p) => p.shuffle);
     final primary = Theme.of(context).colorScheme.primary;
     return IconButton(
@@ -125,7 +130,7 @@ class RepeatButton extends StatelessWidget {
   }
 }
 
-/// 上一首 / 下一首。
+/// 上一首 / 下一首；播放播客单集时换成「后退 10 秒 / 快进 30 秒」（与 Spotify 移动端一致）。
 class SkipButton extends StatelessWidget {
   final bool next;
   final double size;
@@ -134,15 +139,79 @@ class SkipButton extends StatelessWidget {
 
   const SkipButton({super.key, required this.next, this.size = 34, this.color = Colors.white, this.constraints});
 
+  static const Duration podcastBack = Duration(seconds: 10);
+  static const Duration podcastForward = Duration(seconds: 30);
+
   @override
   Widget build(BuildContext context) {
     final playback = context.read<PlaybackProvider>();
+    final isEpisode = context.select<PlaybackProvider, bool>((p) => p.isEpisode);
+    if (isEpisode) {
+      return IconButton(
+        tooltip: next ? context.l10n.podcastSkipForward : context.l10n.podcastSkipBack,
+        constraints: constraints,
+        padding: constraints != null ? EdgeInsets.zero : null,
+        icon: Icon(next ? Icons.forward_30_rounded : Icons.replay_10_rounded, size: size * 0.85, color: color),
+        onPressed: () => playback.skipBy(next ? podcastForward : -podcastBack),
+      );
+    }
     return IconButton(
       tooltip: next ? context.l10n.playerNext : context.l10n.playerPrevious,
       constraints: constraints,
       padding: constraints != null ? EdgeInsets.zero : null,
       icon: Icon(next ? Icons.skip_next_rounded : Icons.skip_previous_rounded, size: size, color: color),
       onPressed: next ? playback.nextTrack : playback.previousTrack,
+    );
+  }
+}
+
+/// 播客播放速度：显示当前倍速（如 1.5×），点开选择。
+class PodcastSpeedButton extends StatelessWidget {
+  final double size;
+  final Color inactiveColor;
+  final BoxConstraints? constraints;
+
+  const PodcastSpeedButton({super.key, this.size = 24, this.inactiveColor = Colors.white60, this.constraints});
+
+  /// 1.0 → "1.0"，1.25 → "1.25"。
+  static String label(double speed) => '$speed';
+
+  @override
+  Widget build(BuildContext context) {
+    final speed = context.select<PlaybackProvider, double>((p) => p.podcastSpeed);
+    final primary = Theme.of(context).colorScheme.primary;
+    final active = speed != 1.0;
+    final l10n = context.l10n;
+    return PopupMenuButton<double>(
+      tooltip: l10n.podcastSpeed,
+      initialValue: speed,
+      constraints: const BoxConstraints(minWidth: 96),
+      onSelected: (value) => context.read<PlaybackProvider>().setPodcastSpeed(value),
+      itemBuilder: (_) => [
+        for (final s in PlaybackProvider.podcastSpeeds)
+          CheckedPopupMenuItem<double>(
+            value: s,
+            checked: s == speed,
+            child: Text(l10n.podcastSpeedValue(label(s))),
+          ),
+      ],
+      child: ConstrainedBox(
+        constraints: constraints ?? const BoxConstraints(minWidth: 48, minHeight: 48),
+        child: Center(
+          child: _ActiveDot(
+            active: active,
+            color: primary,
+            child: Text(
+              l10n.podcastSpeedValue(label(speed)),
+              style: TextStyle(
+                fontSize: size * 0.62,
+                fontWeight: FontWeight.w700,
+                color: active ? primary : inactiveColor,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -157,6 +226,8 @@ class LikeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 单集不是曲目：点赞会被当成曲目写进「已点赞的歌曲」，不显示
+    if (track.uri.startsWith('spotify:episode:')) return const SizedBox.shrink();
     final liked = context.select<LibraryProvider, bool>((l) => l.isLiked(track.id));
     final primary = Theme.of(context).colorScheme.primary;
     return IconButton(

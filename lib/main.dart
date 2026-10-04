@@ -58,6 +58,7 @@ import 'services/cache/cache_location.dart';
 import 'services/cache/cache_directory_access.dart';
 import 'services/cache/artwork_cache.dart';
 import 'services/protocol/eme_track_audio_source.dart';
+import 'services/protocol/podcast_routing_audio_source.dart';
 import 'services/protocol/track_audio_loader.dart';
 import 'services/spotify_api_service.dart';
 import 'services/storage_service.dart';
@@ -218,12 +219,33 @@ Future<Widget> _initializeApp(ValueChanged<String> reportStage) async {
     clientToken: () => authService.ensureClientToken(),
   );
 
+  // 播客单集：EME 链路只认曲目，单集走 AP 协议链路（Mercury 元数据 → 明文 / 外部地址下载），
+  // 缓存放在音频缓存根目录下独立的 podcast_audio 目录，与曲目缓存互不干扰
+  final episodeSource = TrackAudioLoader(
+    cacheDirectory: '${supportDir.path}${Platform.pathSeparator}podcast_audio',
+    cacheDirectoryProvider: () =>
+        '${audioCacheLocation.rootFor(CacheCategory.audio)}'
+        '${Platform.pathSeparator}podcast_audio',
+    deviceId: storageService.deviceId.isEmpty ? null : storageService.deviceId,
+    accessToken: () async {
+      try {
+        await authService.ensureAccessToken();
+      } catch (_) {}
+      return storageService.accessToken;
+    },
+    clientToken: () => authService.ensureClientToken(),
+  );
+  final audioSource = PodcastRoutingAudioSource(
+    tracks: emeTrackSource,
+    episodes: episodeSource,
+  );
+
   audioCacheLocation.audioInUse = emeTrackSource.isCacheFileInUse;
   audioCacheLocation.prepareLegacyArtwork = () =>
       ArtworkCache.prepareLegacy(audioCacheLocation.legacyArtworkDirectory!);
   reportStage('迁移旧缓存');
   await audioCacheLocation.resumeMigrations();
-  emeTrackSource.maxCacheBytes = storageService.audioCacheLimitMb * 1024 * 1024;
+  audioSource.maxCacheBytes = storageService.audioCacheLimitMb * 1024 * 1024;
   audioCacheLocation.addListener(() => unawaited(emeTrackSource.trimCache()));
   final artworkCache = ArtworkCache(audioCacheLocation);
   audioCacheLocation.artworkMaintenance = artworkCache.maintain;
@@ -236,7 +258,7 @@ Future<Widget> _initializeApp(ValueChanged<String> reportStage) async {
     spotifyApiService: spotifyApiService,
     authService: authService,
     webTokenService: webTokenService,
-    trackAudioLoader: emeTrackSource,
+    trackAudioLoader: audioSource,
     playbackSessionStore: sessionStore,
     mediaControls: mediaControls,
     networkProxy: NetworkProxy.instance,

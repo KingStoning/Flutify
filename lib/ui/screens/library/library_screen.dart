@@ -8,6 +8,7 @@ import '../../../l10n/l10n.dart';
 import '../../../models/album.dart';
 import '../../../models/artist.dart';
 import '../../../models/playlist.dart';
+import '../../../models/podcast.dart';
 import '../../../providers/library_provider.dart';
 import '../../navigation/app_routes.dart';
 import '../../widgets/cover_image.dart';
@@ -16,7 +17,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/user_avatar.dart';
 
-enum _LibraryFilter { playlists, artists, albums }
+enum _LibraryFilter { playlists, artists, albums, podcasts }
 
 enum _LibrarySort { recent, alphabetical }
 
@@ -80,6 +81,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     List<SpotifyPlaylist> playlists,
     List<SpotifyArtist> artists,
     List<SpotifyAlbum> albums,
+    List<PodcastShow> shows,
     int likedCount,
   ) {
     final library = context.read<LibraryProvider>();
@@ -123,6 +125,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
             onTap: () => AppRoutes.openAlbum(context, a),
           )));
     }
+    if (_filter == null || _filter == _LibraryFilter.podcasts) {
+      items.addAll(shows.map((s) => _LibraryItem(
+            id: s.id,
+            title: s.name,
+            subtitle: l10n.subtitleJoin(l10n.typePodcast, s.publisher),
+            imageUrl: s.coverUrl,
+            onTap: () => AppRoutes.openPodcast(context, s.uri, initialTitle: s.name, initialCover: s.coverUrl),
+          )));
+    }
 
     final query = _queryController.text.trim().toLowerCase();
     var result = query.isEmpty
@@ -146,8 +157,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final playlists = context.select<LibraryProvider, List<SpotifyPlaylist>>((l) => l.playlists);
     final artists = context.select<LibraryProvider, List<SpotifyArtist>>((l) => l.artists);
     final albums = context.select<LibraryProvider, List<SpotifyAlbum>>((l) => l.albums);
+    final shows = context.select<LibraryProvider, List<PodcastShow>>((l) => l.shows);
     final likedCount = context.select<LibraryProvider, int>((l) => l.likedTracks.length);
-    final items = _buildItems(playlists, artists, albums, likedCount);
+    final items = _buildItems(playlists, artists, albums, shows, likedCount);
 
     return Scaffold(
       body: SafeArea(
@@ -223,6 +235,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             _LibraryFilter.playlists => l10n.filterPlaylists,
                             _LibraryFilter.artists => l10n.filterArtists,
                             _LibraryFilter.albums => l10n.filterAlbums,
+                            _LibraryFilter.podcasts => l10n.filterPodcasts,
                           },
                           isSelected: _filter == f,
                           onTap: () => setState(() => _filter = _filter == f ? null : f),
@@ -278,9 +291,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ? SingleChildScrollView(
                       padding: const EdgeInsets.only(top: 40, bottom: 120),
                       child: EmptyState(
-                        icon: Icons.library_music_outlined,
+                        icon: _filter == _LibraryFilter.podcasts
+                            ? Icons.podcasts_rounded
+                            : Icons.library_music_outlined,
                         title: l10n.libraryEmptyTitle,
-                        message: l10n.libraryEmptyMessage,
+                        message: _filter == _LibraryFilter.podcasts
+                            ? l10n.libraryPodcastsEmpty
+                            : l10n.libraryEmptyMessage,
                       ),
                     )
                   : _isGridView

@@ -600,5 +600,20 @@
   "@settingsGatewayCountryStatus": {"placeholders": {"country": {"type": "String"}, "route": {"type": "String"}}},
   "settingsGatewayRouteProxy": "反代已开启",
   "settingsGatewayRouteDirect": "直连",
-  "settingsGatewayRecheck": "重新查询国家/地区"
+  "settingsGatewayRecheck": "重新查询国家/地区",
+  "podcastSkipBack": "后退 10 秒",
+  "podcastSkipForward": "快进 30 秒",
+  "podcastSpeed": "播放速度",
+  "podcastSpeedValue": "{speed}×",
+  "@podcastSpeedValue": {"placeholders": {"speed": {"type": "String"}}},
+  "podcastFollow": "关注",
+  "podcastUnfollow": "取消关注",
+  "podcastFollowing": "已关注",
+  "podcastMarkPlayed": "标记为已播完",
+  "podcastMarkUnplayed": "标记为未播放",
+  "podcastLatestHint": "这里只列出节目页提供的部分单集",
+  "searchPodcastsAndEpisodes": "播客和单集",
+  "libraryPodcastsEmpty": "关注的播客会显示在这里",
+  "searchFailedTitle": "搜索失败",
+  "searchFailedMessage": "请检查网络连接后重试。"
 }

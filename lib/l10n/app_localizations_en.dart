@@ -1489,4 +1489,49 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsGatewayRecheck => 'Check country/region again';
+
+  @override
+  String get podcastSkipBack => 'Back 10 seconds';
+
+  @override
+  String get podcastSkipForward => 'Forward 30 seconds';
+
+  @override
+  String get podcastSpeed => 'Playback speed';
+
+  @override
+  String podcastSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get podcastFollow => 'Follow';
+
+  @override
+  String get podcastUnfollow => 'Unfollow';
+
+  @override
+  String get podcastFollowing => 'Following';
+
+  @override
+  String get podcastMarkPlayed => 'Mark as played';
+
+  @override
+  String get podcastMarkUnplayed => 'Mark as unplayed';
+
+  @override
+  String get podcastLatestHint =>
+      'Only some of this show\'s episodes are listed here';
+
+  @override
+  String get searchPodcastsAndEpisodes => 'Podcasts & episodes';
+
+  @override
+  String get libraryPodcastsEmpty => 'Podcasts you follow will show up here';
+
+  @override
+  String get searchFailedTitle => 'Search failed';
+
+  @override
+  String get searchFailedMessage => 'Check your connection and try again.';
 }

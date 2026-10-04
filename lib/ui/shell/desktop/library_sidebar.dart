@@ -224,7 +224,7 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// 类型筛选：歌单 / 专辑 / 艺人；再次点击已选中的项取消筛选。
+/// 类型筛选：歌单 / 专辑 / 艺人 / 播客；再次点击已选中的项取消筛选。
 class _FilterRow extends StatelessWidget {
   final LibraryKind? selected;
   final ValueChanged<LibraryKind?> onSelected;
@@ -238,6 +238,7 @@ class _FilterRow extends StatelessWidget {
       LibraryKind.playlist: l10n.filterPlaylists,
       LibraryKind.album: l10n.filterAlbums,
       LibraryKind.artist: l10n.filterArtists,
+      LibraryKind.podcast: l10n.filterPodcasts,
     };
     return SizedBox(
       height: 44,

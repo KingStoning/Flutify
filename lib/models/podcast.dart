@@ -29,6 +29,41 @@ class PodcastShow {
   });
 
   String get coverUrl => images.isEmpty ? '' : images.first.url;
+
+  /// 去掉单集列表（媒体库只保存节目本身，单集每次打开节目页时重新拉取）。
+  PodcastShow withoutEpisodes() => PodcastShow(
+    id: id,
+    uri: uri,
+    name: name,
+    publisher: publisher,
+    description: description,
+    images: images,
+  );
+
+  /// 媒体库持久化（不含单集）。
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'uri': uri,
+    'name': name,
+    'publisher': publisher,
+    'images': images.map((e) => e.toJson()).toList(),
+  };
+
+  factory PodcastShow.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '';
+    return PodcastShow(
+      id: id,
+      uri: json['uri'] as String? ?? 'spotify:show:$id',
+      name: json['name'] as String? ?? '',
+      publisher: json['publisher'] as String? ?? '',
+      images:
+          (json['images'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(SpotifyImage.fromJson)
+              .toList() ??
+          const [],
+    );
+  }
 }
 
 /// 播客单集（episode）。
@@ -77,8 +112,9 @@ class PodcastEpisode {
     id: id,
     name: name,
     uri: uri,
-    artists: [SpotifyArtist(id: '', name: showName)],
-    album: SpotifyAlbum(id: '', name: showName, images: images),
+    // 「艺人 / 专辑」指向所属节目：播放器里点节目名会打开节目页（见 AppRoutes.openAlbum）
+    artists: [SpotifyArtist(id: '', name: showName, uri: showUri)],
+    album: SpotifyAlbum(id: '', name: showName, uri: showUri, images: images),
     durationMs: durationMs,
     previewUrl: previewUrl.isEmpty ? null : previewUrl,
   );

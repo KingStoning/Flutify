@@ -138,6 +138,7 @@ class _EntryCover extends StatelessWidget {
         LibraryKind.artist => Icons.person_rounded,
         LibraryKind.album => Icons.album_rounded,
         LibraryKind.playlist => Icons.queue_music_rounded,
+        LibraryKind.podcast => Icons.podcasts_rounded,
       },
     );
   }

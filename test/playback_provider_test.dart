@@ -71,6 +71,27 @@ void main() {
     expect(playback.currentTrack?.id, b.id);
   });
 
+  test('previous from a queued track returns to the context track that played before it', () async {
+    await playback.playTrack(a, contextQueue: [a, b, c], context: ctx);
+    await playback.nextTrack(); // b
+    playback.addToQueue(x);
+    await playback.nextTrack(); // x（插队）
+    expect(playback.currentTrack?.id, x.id);
+
+    await playback.previousTrack();
+    expect(playback.currentTrack?.id, b.id);
+    await playback.nextTrack();
+    expect(playback.currentTrack?.id, c.id);
+  });
+
+  test('previous from a queued track played after the first context track', () async {
+    await playback.playTrack(a, contextQueue: [a, b, c], context: ctx);
+    playback.addToQueue(x);
+    await playback.nextTrack(); // x
+    await playback.previousTrack();
+    expect(playback.currentTrack?.id, a.id);
+  });
+
   group('remotePlay hook', () {
     test(
       'late remote failure cannot override a newer local track or pause',

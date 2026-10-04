@@ -72,6 +72,9 @@ class FakeAudioPlayerService implements AudioPlayerService {
   Future<void> seek(Duration position) async => seeks.add(position);
   @override
   Future<void> setVolume(double volume) async => lastVolume = volume;
+  double lastSpeed = 1.0;
+  @override
+  Future<void> setSpeed(double speed) async => lastSpeed = speed;
   @override
   Future<void> stop() async => _playing = false;
 

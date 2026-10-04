@@ -13,6 +13,7 @@ import '../models/track.dart';
 import '../services/audio/audio_engine.dart';
 import '../services/playback_session_store.dart';
 import '../services/network/network_failure.dart';
+import '../services/podcast/episode_progress_store.dart';
 import '../services/protocol/track_audio_loader.dart';
 import '../services/storage_service.dart';
 
@@ -57,6 +58,16 @@ class PlaybackProvider extends ChangeNotifier {
   /// 上次播放会话的存储；为空时不还原也不保存（测试默认）。
   final PlaybackSessionStore? sessionStore;
   final Random _random;
+
+  /// 单集续播进度（本机记录）：切到单集时从上次位置继续，播完标记为已听完。
+  final EpisodeProgressStore episodeProgress;
+
+  /// 上次记录单集进度时的位置；播放中每推进 [_positionSaveInterval] 记录一次。
+  Duration _episodeSavedPosition = Duration.zero;
+
+  /// 播客播放速度（只作用于单集）。
+  double _podcastSpeed;
+  static const List<double> podcastSpeeds = [0.5, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0];
 
   /// 远程播放接管（由 main.dart 接上 Spotify Connect）：点歌时先问它，返回 true 表示已交给远程设备播放，
   /// 本机不再加载；[start] 为 null 表示从头播放整个上下文。为空或返回 false 时照常在本机播放。
@@ -215,7 +226,9 @@ class PlaybackProvider extends ChangeNotifier {
        _volume = _storage.volume,
        _volumeBeforeMute = _storage.volume > 0 ? _storage.volume : 0.8,
        _normalize = _storage.normalizeVolume,
-       _fadeSeconds = _storage.fadeSeconds.clamp(0, maxFadeSeconds) {
+       _fadeSeconds = _storage.fadeSeconds.clamp(0, maxFadeSeconds),
+       _podcastSpeed = _storage.podcastSpeed.clamp(0.5, 3.0),
+       episodeProgress = EpisodeProgressStore(_storage) {
     _initAudioListeners();
     _applyVolume();
     // 有上次会话时还原为「暂停在上次的位置」；否则没有当前曲目，播放器条隐藏，直到用户点播一首歌
@@ -226,6 +239,61 @@ class PlaybackProvider extends ChangeNotifier {
   // Getters
   // ---------------------------------------------------------------------------
   SpotifyTrack? get currentTrack => _currentTrack;
+
+  /// 当前播放的是播客单集。
+  bool get isEpisode => isEpisodeUri(_currentTrack?.uri);
+
+  static bool isEpisodeUri(String? uri) =>
+      uri != null && uri.startsWith('spotify:episode:');
+
+  /// 播客播放速度（1.0 为原速）。
+  double get podcastSpeed => _podcastSpeed;
+
+  void setPodcastSpeed(double value) {
+    final next = value.clamp(0.5, 3.0).toDouble();
+    if (next == _podcastSpeed) return;
+    _podcastSpeed = next;
+    _storage.setPodcastSpeed(next);
+    _applySpeed();
+    notifyListeners();
+  }
+
+  /// 单集用播客速度，音乐始终原速（just_audio 换音源后速度会保留，每次加载都要重设）。
+  void _applySpeed() {
+    unawaited(
+      _audio.setSpeed(isEpisode ? _podcastSpeed : 1.0).catchError((Object _) {}),
+    );
+  }
+
+  /// 整个上下文都是单集（节目页）：与 Spotify 一致不随机，按节目顺序播放。
+  static bool _isEpisodeContext(List<SpotifyTrack> tracks) =>
+      tracks.isNotEmpty && tracks.every((t) => isEpisodeUri(t.uri));
+
+  /// 快进 / 快退（播客的 -10 秒 / +30 秒按钮）。
+  Future<void> skipBy(Duration delta) {
+    final target = position + delta;
+    return seekTo(target < Duration.zero ? Duration.zero : target);
+  }
+
+  /// 手动标记单集为已播完 / 未播放（节目页菜单）。
+  void markEpisodePlayed(String uri, bool played) {
+    episodeProgress.setFinished(uri, played);
+    if (_currentTrack?.uri == uri) _episodeSavedPosition = positionNotifier.value;
+    notifyListeners();
+  }
+
+  /// 记录当前单集的收听进度（只在音频已加载时记录，避免加载前的 0 覆盖续播位置）。
+  void _recordEpisodeProgress({bool force = false}) {
+    final track = _currentTrack;
+    if (track == null || !isEpisodeUri(track.uri)) return;
+    if (_loadedTrackId != track.id) return;
+    final pos = positionNotifier.value;
+    if (!force && (pos - _episodeSavedPosition).abs() < _positionSaveInterval) {
+      return;
+    }
+    _episodeSavedPosition = pos;
+    if (episodeProgress.update(track.uri, pos, _duration)) notifyListeners();
+  }
 
   /// 最近一次播放失败；UI 读取后提示用户，并可调用 [clearPlaybackError] 清除。
   /// 对话框 / SnackBar 建议监听 [playbackErrors]（每次失败触发一次事件）。
@@ -311,8 +379,10 @@ class PlaybackProvider extends ChangeNotifier {
       if (_loadedTrackId == null && _resumeAt != null) return;
       positionNotifier.value = pos;
       if (_fadeSeconds > 0) _updateFade(pos);
-      if ((pos - _savedPosition).abs() >= _positionSaveInterval)
+      if ((pos - _savedPosition).abs() >= _positionSaveInterval) {
         _scheduleSave();
+      }
+      _recordEpisodeProgress();
     });
 
     _durSub = _audio.durationStream.listen((dur) {
@@ -350,6 +420,12 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void _handleTrackEnded() {
+    final ended = _currentTrack;
+    if (ended != null && isEpisodeUri(ended.uri)) {
+      episodeProgress.setFinished(ended.uri, true, duration: _duration);
+      _episodeSavedPosition = Duration.zero;
+      notifyListeners();
+    }
     if (_stopAfterCurrent) {
       // 睡眠定时器「本首结束时」：停在本首开头，不接下一首（单曲循环也停）
       _stopAfterCurrent = false;
@@ -403,7 +479,7 @@ class PlaybackProvider extends ChangeNotifier {
       _orderPos = 0;
       return;
     }
-    if (_shuffle) {
+    if (_shuffle && !_isEpisodeContext(_contextTracks)) {
       final rest = [
         for (var i = 0; i < n; i++)
           if (i != currentIndex) i,
@@ -423,6 +499,13 @@ class PlaybackProvider extends ChangeNotifier {
     bool deferLoad = false,
   }) async {
     ++_playIntent;
+    // 切走前记下上一集听到哪里
+    _recordEpisodeProgress(force: true);
+    // 单集默认从上次听到的位置继续（Spotify 行为）；显式指定 startAt（Connect / 会话还原）时以其为准
+    if (startAt == null && isEpisodeUri(track.uri)) {
+      startAt = episodeProgress.resumePosition(track.uri);
+    }
+    _episodeSavedPosition = startAt ?? Duration.zero;
     _currentTrack = track;
     _duration = Duration(milliseconds: track.durationMs);
     positionNotifier.value = startAt ?? Duration.zero;
@@ -505,6 +588,7 @@ class PlaybackProvider extends ChangeNotifier {
         _normalization = audio.normalization;
         _updateFade(resumeAt ?? Duration.zero);
         _applyVolume();
+        _applySpeed();
         final eme = audio.emeContent;
         final stream = audio.stream;
         if (eme != null) {
@@ -685,7 +769,7 @@ class PlaybackProvider extends ChangeNotifier {
     } else if (_orderPos + 1 < _order.length) {
       next = _contextTracks[_order[_orderPos + 1]];
     }
-    // 单集不预取：音频密钥当前拿不到，预取只会白费一次 metadata 请求
+    // 单集不预取：动辄几十 MB，播完上一集前就整集下载会白白占用带宽与缓存
     if (next != null &&
         next.isPlayable &&
         next.id.isNotEmpty &&
@@ -894,7 +978,9 @@ class PlaybackProvider extends ChangeNotifier {
     final remote = remotePlay;
     if (remote != null && await remote(context, tracks, null)) return;
     if (intent != _playIntent) return;
-    final start = _shuffle ? _random.nextInt(tracks.length) : 0;
+    final start = _shuffle && !_isEpisodeContext(tracks)
+        ? _random.nextInt(tracks.length)
+        : 0;
     await _playLocal(tracks[start], contextQueue: tracks, context: context);
   }
 
@@ -931,7 +1017,7 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     if (_repeatMode == SpotifyRepeatMode.context && _order.isNotEmpty) {
-      if (_shuffle) _order.shuffle(_random);
+      if (_shuffle && !_isEpisodeContext(_contextTracks)) _order.shuffle(_random);
       _orderPos = 0;
       await _startTrack(_contextTracks[_order[_orderPos]], isRetry: isAutoSkip);
       return;
@@ -943,6 +1029,13 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> previousTrack() async {
+    // 插队曲目播放时 _orderPos 仍指向它之前播放的上下文曲目：上一首就是那一首，不再往前退
+    if (_order.isNotEmpty &&
+        _currentTrack != null &&
+        _contextTracks[_order[_orderPos]].uri != _currentTrack!.uri) {
+      await _startTrack(_contextTracks[_order[_orderPos]]);
+      return;
+    }
     if (_orderPos == 0 || _order.isEmpty) {
       await seekTo(Duration.zero);
       return;
@@ -1067,6 +1160,7 @@ class PlaybackProvider extends ChangeNotifier {
 
   /// 立即保存当前会话（退出 App / 切到后台时调用）。
   Future<void> flushSession() async {
+    _recordEpisodeProgress(force: true);
     final store = sessionStore;
     final session = _snapshot();
     if (store == null || session == null) return;

@@ -15,6 +15,9 @@ class MediaTrackInfo {
   final String artUrl;
   final Duration duration;
 
+  /// 播客单集（没有歌词）。
+  final bool isEpisode;
+
   const MediaTrackInfo({
     required this.id,
     required this.title,
@@ -22,6 +25,7 @@ class MediaTrackInfo {
     required this.album,
     required this.artUrl,
     required this.duration,
+    this.isEpisode = false,
   });
 }
 

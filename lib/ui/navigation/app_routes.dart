@@ -26,11 +26,25 @@ class AppRoutes {
   static void openPlaylist(BuildContext context, SpotifyPlaylist playlist) =>
       _push(context, PlaylistDetailScreen(playlist: playlist));
 
-  static void openAlbum(BuildContext context, SpotifyAlbum album) =>
-      _push(context, AlbumDetailScreen(album: album));
+  /// 播客单集的「专辑 / 艺人」是所属节目（uri 为 `spotify:show:`），跳到节目页；
+  /// 没有 id 的引用（无法加载详情）忽略。
+  static void openAlbum(BuildContext context, SpotifyAlbum album) {
+    if (album.uri.startsWith('spotify:show:')) {
+      openPodcast(context, album.uri, initialTitle: album.name, initialCover: album.coverUrl);
+      return;
+    }
+    if (album.id.isEmpty) return;
+    _push(context, AlbumDetailScreen(album: album));
+  }
 
-  static void openArtist(BuildContext context, SpotifyArtist artist) =>
-      _push(context, ArtistDetailScreen(artist: artist));
+  static void openArtist(BuildContext context, SpotifyArtist artist) {
+    if (artist.uri.startsWith('spotify:show:')) {
+      openPodcast(context, artist.uri, initialTitle: artist.name);
+      return;
+    }
+    if (artist.id.isEmpty) return;
+    _push(context, ArtistDetailScreen(artist: artist));
+  }
 
   /// 播客节目页。[showUri] 为 `spotify:show:xxx`；[initialTitle] / [initialCover] 来自卡片，加载前先展示。
   static void openPodcast(

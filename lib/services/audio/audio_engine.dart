@@ -80,6 +80,9 @@ abstract class AudioEngine {
   Future<void> pause();
   Future<void> seek(Duration position);
   Future<void> setVolume(double volume);
+
+  /// 播放速度（1.0 为原速）。目前只有播客单集会用到；DRM 引擎不支持变速，忽略。
+  Future<void> setSpeed(double speed);
   Future<void> stop();
 
   void dispose();

@@ -87,18 +87,24 @@ class CollectionActionRow extends StatelessWidget {
   /// 靠右的工具（歌单页的搜索 / 排序）；可被压缩，空间不够时自身省略。
   final Widget? trailing;
 
+  /// 是否显示随机播放键（播客节目页不需要）。
+  final bool showShuffle;
+
   const CollectionActionRow({
     super.key,
     required this.leading,
     required this.tracks,
     required this.playbackContext,
     this.trailing,
+    this.showShuffle = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final shuffle = ShuffleButton(size: 26, inactiveColor: colorScheme.onSurfaceVariant);
+    final Widget shuffle = showShuffle
+        ? ShuffleButton(size: 26, inactiveColor: colorScheme.onSurfaceVariant)
+        : const SizedBox.shrink();
     final play = ContextPlayButton(tracks: tracks, playbackContext: playbackContext);
     final trailing = this.trailing;
 

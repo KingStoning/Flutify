@@ -5,8 +5,18 @@ import '../../models/artist.dart';
 import '../../models/category.dart';
 import '../../models/image.dart';
 import '../../models/playlist.dart';
+import '../../models/podcast.dart';
 import '../../models/track.dart';
 import '../library/playlist_cover.dart';
+
+/// 搜索结果（各类型独立，缺失的类型为空列表）。
+typedef SearchResults = ({
+  List<SpotifyTrack> tracks,
+  List<SpotifyArtist> artists,
+  List<SpotifyPlaylist> playlists,
+  List<PodcastShow> shows,
+  List<PodcastEpisode> episodes,
+});
 
 /// 把桌面端内部接口（Pathfinder GraphQL / spclient playlist v2）的响应转换为 App 数据模型。
 ///
@@ -146,6 +156,45 @@ class PathfinderParsers {
     );
   }
 
+  /// Podcast（搜索结果）：节目名、出版方、封面。
+  static PodcastShow? podcastShow(Object? value) {
+    final m = unwrap(value);
+    final uri = m?['uri'];
+    if (m == null || uri is! String || !uri.startsWith('spotify:show:')) return null;
+    return PodcastShow(
+      id: m['id'] as String? ?? idFromUri(uri),
+      uri: uri,
+      name: m['name'] as String? ?? '',
+      publisher: _map(m['publisher'])?['name'] as String? ?? '',
+      images: images(_map(m['coverArt'])?['sources']),
+    );
+  }
+
+  /// Episode（搜索结果）：所属节目在 `podcastV2`（包装对象）里。
+  static PodcastEpisode? podcastEpisode(Object? value) {
+    final m = unwrap(value);
+    final uri = m?['uri'];
+    if (m == null || uri is! String || !uri.startsWith('spotify:episode:')) return null;
+    // 通常是 PodcastResponseWrapper；个别响应只有 {data: {...}}，两种都认
+    final podcast = unwrap(m['podcastV2']);
+    final show = podcast?['uri'] is String ? podcast : _map(podcast?['data']);
+    final release = _map(m['releaseDate']);
+    final played = _map(m['playedState']);
+    return PodcastEpisode(
+      id: m['id'] as String? ?? idFromUri(uri),
+      uri: uri,
+      name: m['name'] as String? ?? '',
+      description: stripHtml(m['description'] as String? ?? ''),
+      durationMs: _int(_map(m['duration'])?['totalMilliseconds']) ?? 0,
+      releaseDate: release?['isoString'] as String? ?? '',
+      images: images(_map(m['coverArt'])?['sources']),
+      showUri: show?['uri'] as String? ?? '',
+      showName: show?['name'] as String? ?? '',
+      resumeMs: _int(played?['playPositionMilliseconds']) ?? 0,
+      played: played?['state'] == 'FINISHED',
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // 页面
   // ---------------------------------------------------------------------------
@@ -171,15 +220,15 @@ class PathfinderParsers {
     return result;
   }
 
-  /// searchDesktop：曲目、艺人、歌单。
-  static ({List<SpotifyTrack> tracks, List<SpotifyArtist> artists, List<SpotifyPlaylist> playlists}) search(
-    Map<String, dynamic> data,
-  ) {
+  /// searchDesktop：曲目、艺人、歌单、播客节目与单集。
+  static SearchResults search(Map<String, dynamic> data) {
     final s = _map(data['searchV2']);
     return (
       tracks: _list(_map(s?['tracksV2'])?['items']).map((i) => trackItem(i)).whereType<SpotifyTrack>().toList(),
       artists: _list(_map(s?['artists'])?['items']).map(artist).whereType<SpotifyArtist>().toList(),
       playlists: _list(_map(s?['playlists'])?['items']).map(playlist).whereType<SpotifyPlaylist>().toList(),
+      shows: _list(_map(s?['podcasts'])?['items']).map(podcastShow).whereType<PodcastShow>().toList(),
+      episodes: _list(_map(s?['episodes'])?['items']).map(podcastEpisode).whereType<PodcastEpisode>().toList(),
     );
   }
 

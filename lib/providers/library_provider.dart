@@ -6,6 +6,7 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import '../models/image.dart';
 import '../models/playlist.dart';
+import '../models/podcast.dart';
 import '../models/track.dart';
 import '../services/library/library_source.dart';
 import '../services/storage_service.dart';
@@ -45,6 +46,9 @@ class LibraryProvider extends ChangeNotifier {
   List<SpotifyArtist> _artists = const [];
   List<SpotifyAlbum> _albums = const [];
 
+  /// 本机关注的播客节目（最新关注在前；不随账号同步，登出 / 换号也保留）。
+  List<PodcastShow> _shows = const [];
+
   SpotifyPlaylist? _likedSongsCache;
 
   bool _isLoading = false;
@@ -64,6 +68,7 @@ class LibraryProvider extends ChangeNotifier {
   List<SpotifyPlaylist> get playlists => _playlists;
   List<SpotifyArtist> get artists => _artists;
   List<SpotifyAlbum> get albums => _albums;
+  List<PodcastShow> get shows => _shows;
 
   /// 用户在本机新建的（可编辑）歌单。
   List<SpotifyPlaylist> get ownPlaylists => _playlists.where((p) => isOwnPlaylist(p.id)).toList();
@@ -83,6 +88,7 @@ class LibraryProvider extends ChangeNotifier {
   bool isPlaylistSaved(String id) => _playlists.any((p) => p.id == id);
   bool isFollowing(String artistId) => _artists.any((a) => a.id == artistId);
   bool isAlbumSaved(String id) => _albums.any((a) => a.id == id);
+  bool isShowFollowed(String id) => _shows.any((s) => s.id == id);
 
   /// 以歌单形式呈现的 Liked Songs，供详情页复用（名称 / 简介由 UI 按界面语言显示）。
   SpotifyPlaylist get likedSongsPlaylist {
@@ -239,6 +245,8 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   void toggleLike(SpotifyTrack track) {
+    // 单集不是曲目，不能写进「已点赞的歌曲」
+    if (track.uri.startsWith('spotify:episode:')) return;
     final liking = !_likedIds.contains(track.id);
     if (liking) {
       _likedTracks = [track.copyWith(addedAt: DateTime.now()), ..._likedTracks];
@@ -280,6 +288,15 @@ class LibraryProvider extends ChangeNotifier {
     _storage.writeJsonList(StorageService.keyLibraryAlbums, _albums.map((a) => a.toJson()));
     notifyListeners();
     _sync((s) => s.setAlbumSaved(album, saving));
+  }
+
+  /// 关注 / 取消关注播客节目（只保存在本机）。
+  void toggleShowFollowed(PodcastShow show) {
+    _shows = isShowFollowed(show.id)
+        ? _shows.where((s) => s.id != show.id).toList()
+        : [show.withoutEpisodes(), ..._shows];
+    _storage.writeJsonList(StorageService.keyLibraryShows, _shows.map((s) => s.toJson()));
+    notifyListeners();
   }
 
   /// 新建歌单（仅保存在本机），返回创建结果。
@@ -396,6 +413,11 @@ class LibraryProvider extends ChangeNotifier {
         : const [];
     _localPlaylists =
         _storage.readJsonList(StorageService.keyLibraryLocalPlaylists).map(SpotifyPlaylist.fromJson).toList();
+    _shows = _storage
+        .readJsonList(StorageService.keyLibraryShows)
+        .map(PodcastShow.fromJson)
+        .where((s) => s.id.isNotEmpty)
+        .toList();
     _rebuildPlaylists();
   }
 }
