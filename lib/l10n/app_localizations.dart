@@ -2683,6 +2683,90 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重新查询国家/地区'**
   String get settingsGatewayRecheck;
+
+  /// No description provided for @podcastSkipBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'后退 10 秒'**
+  String get podcastSkipBack;
+
+  /// No description provided for @podcastSkipForward.
+  ///
+  /// In zh, this message translates to:
+  /// **'快进 30 秒'**
+  String get podcastSkipForward;
+
+  /// No description provided for @podcastSpeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'播放速度'**
+  String get podcastSpeed;
+
+  /// No description provided for @podcastSpeedValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{speed}×'**
+  String podcastSpeedValue(String speed);
+
+  /// No description provided for @podcastFollow.
+  ///
+  /// In zh, this message translates to:
+  /// **'关注'**
+  String get podcastFollow;
+
+  /// No description provided for @podcastUnfollow.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消关注'**
+  String get podcastUnfollow;
+
+  /// No description provided for @podcastFollowing.
+  ///
+  /// In zh, this message translates to:
+  /// **'已关注'**
+  String get podcastFollowing;
+
+  /// No description provided for @podcastMarkPlayed.
+  ///
+  /// In zh, this message translates to:
+  /// **'标记为已播完'**
+  String get podcastMarkPlayed;
+
+  /// No description provided for @podcastMarkUnplayed.
+  ///
+  /// In zh, this message translates to:
+  /// **'标记为未播放'**
+  String get podcastMarkUnplayed;
+
+  /// No description provided for @podcastLatestHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这里只列出节目页提供的部分单集'**
+  String get podcastLatestHint;
+
+  /// No description provided for @searchPodcastsAndEpisodes.
+  ///
+  /// In zh, this message translates to:
+  /// **'播客和单集'**
+  String get searchPodcastsAndEpisodes;
+
+  /// No description provided for @libraryPodcastsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'关注的播客会显示在这里'**
+  String get libraryPodcastsEmpty;
+
+  /// No description provided for @searchFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索失败'**
+  String get searchFailedTitle;
+
+  /// No description provided for @searchFailedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'请检查网络连接后重试。'**
+  String get searchFailedMessage;
 }
 
 class _AppLocalizationsDelegate

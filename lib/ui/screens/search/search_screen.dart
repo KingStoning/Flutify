@@ -6,6 +6,7 @@ import '../../../models/artist.dart';
 import '../../../models/category.dart';
 import '../../../models/playback_context.dart';
 import '../../../models/playlist.dart';
+import '../../../models/podcast.dart';
 import '../../../models/track.dart';
 import '../../../providers/playback_provider.dart';
 import '../../../providers/spotify_provider.dart';
@@ -37,7 +38,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   late final TextEditingController _searchController = widget.controller ?? TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  /// 结果过滤：0 全部 / 1 歌曲 / 2 艺人 / 3 歌单。
+  /// 结果过滤：0 全部 / 1 歌曲 / 2 艺人 / 3 歌单 / 4 播客（节目 + 单集）。
   int _searchFilterIndex = 0;
 
   @override
@@ -74,7 +75,13 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = context.l10n;
-    final searchFilters = [l10n.filterAll, l10n.filterSongs, l10n.filterArtists, l10n.filterPlaylists];
+    final searchFilters = [
+      l10n.filterAll,
+      l10n.filterSongs,
+      l10n.filterArtists,
+      l10n.filterPlaylists,
+      l10n.filterPodcasts,
+    ];
     final isQueryEmpty = _searchController.text.trim().isEmpty;
     final isDesktop = MediaQuery.sizeOf(context).width >= 800;
 
@@ -277,15 +284,20 @@ class _SearchResults extends StatelessWidget {
     final List<SpotifyTrack> tracks = spotify.searchTracks;
     final List<SpotifyArtist> artists = spotify.searchArtists;
     final List<SpotifyPlaylist> playlists = spotify.searchPlaylists;
+    final List<PodcastShow> shows = spotify.searchShows;
+    final List<PodcastEpisode> episodes = spotify.searchEpisodes;
 
-    if (tracks.isEmpty && artists.isEmpty && playlists.isEmpty) {
+    if (tracks.isEmpty && artists.isEmpty && playlists.isEmpty && shows.isEmpty && episodes.isEmpty) {
+      final failed = spotify.searchFailed;
       return Center(
         child: Padding(
           padding: const EdgeInsets.only(bottom: 120),
           child: EmptyState(
-            icon: Icons.search_off_rounded,
-            title: l10n.searchNoResultsTitle(spotify.searchQuery.trim()),
-            message: l10n.searchNoResultsMessage,
+            icon: failed ? Icons.wifi_off_rounded : Icons.search_off_rounded,
+            title: failed ? l10n.searchFailedTitle : l10n.searchNoResultsTitle(spotify.searchQuery.trim()),
+            message: failed ? l10n.searchFailedMessage : l10n.searchNoResultsMessage,
+            actionLabel: failed ? l10n.commonRetry : null,
+            onAction: failed ? () => context.read<SpotifyProvider>().performSearch(spotify.searchQuery) : null,
           ),
         ),
       );
@@ -294,12 +306,15 @@ class _SearchResults extends StatelessWidget {
     final showSongs = filterIndex == 0 || filterIndex == 1;
     final showArtists = filterIndex == 0 || filterIndex == 2;
     final showPlaylists = filterIndex == 0 || filterIndex == 3;
+    final showPodcasts = filterIndex == 0 || filterIndex == 4;
     final searchContext = PlaybackContext.search(spotify.searchQuery.trim());
+    final episodeTracks = [for (final e in episodes) e.toTrack()];
 
     // 当前过滤标签下没有结果（其他类型有）时，给出占位而不是一片空白
     final hasVisible = (showSongs && tracks.isNotEmpty) ||
         (showArtists && artists.isNotEmpty) ||
-        (showPlaylists && playlists.isNotEmpty);
+        (showPlaylists && playlists.isNotEmpty) ||
+        (showPodcasts && (shows.isNotEmpty || episodes.isNotEmpty));
     if (!hasVisible) {
       return Center(
         child: Padding(
@@ -354,6 +369,44 @@ class _SearchResults extends StatelessWidget {
               onTap: () {
                 onResultTap();
                 AppRoutes.openPlaylist(context, playlist);
+              },
+            ),
+        ],
+        if (showPodcasts && shows.isNotEmpty) ...[
+          _ResultHeader(l10n.filterPodcasts),
+          for (final show in shows)
+            ListTile(
+              leading: CoverImage(
+                url: show.coverUrl,
+                size: 48,
+                borderRadius: BorderRadius.circular(6),
+                placeholderIcon: Icons.podcasts_rounded,
+              ),
+              title: Text(show.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(
+                show.publisher.isEmpty ? l10n.typePodcast : l10n.subtitleJoin(l10n.typePodcast, show.publisher),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                onResultTap();
+                AppRoutes.openPodcast(context, show.uri, initialTitle: show.name, initialCover: show.coverUrl);
+              },
+            ),
+        ],
+        if (showPodcasts && episodes.isNotEmpty) ...[
+          _ResultHeader(l10n.homeTypeEpisode),
+          for (var i = 0; i < episodes.length; i++)
+            TrackTile(
+              track: episodeTracks[i],
+              contextQueue: episodeTracks,
+              playbackContext: searchContext,
+              onTap: () {
+                onResultTap();
+                context
+                    .read<PlaybackProvider>()
+                    .playTrack(episodeTracks[i], contextQueue: episodeTracks, context: searchContext);
               },
             ),
         ],

@@ -46,6 +46,8 @@ class TrackOptionsSheet extends StatelessWidget {
     final l10n = context.l10n;
     final isLiked = context.select<LibraryProvider, bool>((l) => l.isLiked(track.id));
     final album = track.album;
+    // 播客单集：没有点赞 / 电台 / 制作人员，「艺人」只是节目名，不能跳转（与桌面菜单一致）
+    final isEpisode = track.uri.startsWith('spotify:episode:');
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -58,21 +60,22 @@ class TrackOptionsSheet extends StatelessWidget {
               subtitle: Text(track.artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const Divider(height: 1),
-            ListTile(
-              leading: Icon(
-                isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: isLiked ? Theme.of(context).colorScheme.primary : null,
+            if (!isEpisode)
+              ListTile(
+                leading: Icon(
+                  isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: isLiked ? Theme.of(context).colorScheme.primary : null,
+                ),
+                title: Text(isLiked ? l10n.likeRemove : l10n.likeAdd),
+                onTap: () {
+                  library.toggleLike(track);
+                  Navigator.pop(context);
+                  _toast(
+                    isLiked ? l10n.toastLikeRemoved : l10n.toastLikeAdded,
+                    isLiked ? Icons.heart_broken_rounded : Icons.favorite_rounded,
+                  );
+                },
               ),
-              title: Text(isLiked ? l10n.likeRemove : l10n.likeAdd),
-              onTap: () {
-                library.toggleLike(track);
-                Navigator.pop(context);
-                _toast(
-                  isLiked ? l10n.toastLikeRemoved : l10n.toastLikeAdded,
-                  isLiked ? Icons.heart_broken_rounded : Icons.favorite_rounded,
-                );
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.playlist_add_rounded),
               title: Text(l10n.trackAddToPlaylist),
@@ -99,34 +102,36 @@ class TrackOptionsSheet extends StatelessWidget {
                   if (hostContext.mounted) SleepTimerMenu.show(hostContext);
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.sensors_rounded),
-              title: Text(l10n.trackGoToRadio),
-              onTap: () {
-                Navigator.pop(context);
-                if (hostContext.mounted) SongRadio.open(hostContext, track);
-              },
-            ),
+            if (!isEpisode)
+              ListTile(
+                leading: const Icon(Icons.sensors_rounded),
+                title: Text(l10n.trackGoToRadio),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (hostContext.mounted) SongRadio.open(hostContext, track);
+                },
+              ),
             if (album != null && album.id.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.album_rounded),
                 title: Text(l10n.trackGoToAlbum),
                 onTap: () => AppRoutes.openAlbum(hostContext, album),
               ),
-            if (track.artists.isNotEmpty)
+            if (!isEpisode && track.artists.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.person_rounded),
                 title: Text(l10n.trackGoToArtist(track.artists.length)),
                 onTap: () => _goToArtist(context),
               ),
-            ListTile(
-              leading: const Icon(Icons.groups_outlined),
-              title: Text(l10n.trackViewCredits),
-              onTap: () {
-                Navigator.pop(context);
-                if (hostContext.mounted) TrackCreditsView.show(hostContext, track);
-              },
-            ),
+            if (!isEpisode)
+              ListTile(
+                leading: const Icon(Icons.groups_outlined),
+                title: Text(l10n.trackViewCredits),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (hostContext.mounted) TrackCreditsView.show(hostContext, track);
+                },
+              ),
             if (_share.isShareable)
               ListTile(
                 leading: const Icon(Icons.ios_share_rounded),

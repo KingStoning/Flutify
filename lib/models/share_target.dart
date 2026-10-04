@@ -1,6 +1,7 @@
 import 'album.dart';
 import 'artist.dart';
 import 'playlist.dart';
+import 'podcast.dart';
 import 'track.dart';
 
 /// 可分享的 Spotify 内容类型；[path] 同时用于网页链接、URI 与嵌入地址。
@@ -8,7 +9,9 @@ enum ShareKind {
   track('track'),
   album('album'),
   playlist('playlist'),
-  artist('artist');
+  artist('artist'),
+  show('show'),
+  episode('episode');
 
   final String path;
 
@@ -41,8 +44,9 @@ class ShareTarget {
     this.imageUrl = '',
   });
 
+  /// 播客单集也以 [SpotifyTrack] 形式在播放层流转：按 URI 区分，链接要用 /episode/。
   factory ShareTarget.track(SpotifyTrack track) => ShareTarget(
-    kind: ShareKind.track,
+    kind: track.uri.startsWith('spotify:episode:') ? ShareKind.episode : ShareKind.track,
     id: track.id,
     title: track.name,
     subtitle: track.artistNames,
@@ -67,6 +71,14 @@ class ShareTarget {
 
   factory ShareTarget.artist(SpotifyArtist artist) =>
       ShareTarget(kind: ShareKind.artist, id: artist.id, title: artist.name, imageUrl: artist.avatarUrl);
+
+  factory ShareTarget.show(PodcastShow show) => ShareTarget(
+    kind: ShareKind.show,
+    id: show.id,
+    title: show.name,
+    subtitle: show.publisher,
+    imageUrl: show.coverUrl,
+  );
 
   /// Spotify 的 base62 id（22 位字母数字）；本地歌单（local_…）、「已点赞的歌曲」等没有公开链接。
   static final RegExp _spotifyId = RegExp(r'^[0-9A-Za-z]{22}$');

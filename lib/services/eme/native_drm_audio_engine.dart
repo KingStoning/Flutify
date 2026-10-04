@@ -167,6 +167,10 @@ class NativeDrmAudioEngine implements AudioEngine {
   @override
   Future<void> seek(Duration position) => _player.seek(position);
 
+  /// DRM 曲目只有音乐，不需要变速。
+  @override
+  Future<void> setSpeed(double speed) async {}
+
   @override
   Future<void> setVolume(double volume) =>
       _player.setVolume(volume.clamp(0.0, 1.0));

@@ -9,6 +9,7 @@ import '../models/home_feed.dart';
 import '../models/lyrics.dart';
 import '../models/lyrics_query.dart';
 import '../models/playlist.dart';
+import '../models/podcast.dart';
 import '../models/track.dart';
 import '../models/user_profile.dart';
 import '../services/lyrics/lyrics_resolver.dart';
@@ -44,6 +45,9 @@ class SpotifyProvider extends ChangeNotifier {
   List<SpotifyTrack> _searchTracks = [];
   List<SpotifyArtist> _searchArtists = [];
   List<SpotifyPlaylist> _searchPlaylists = [];
+  List<PodcastShow> _searchShows = [];
+  List<PodcastEpisode> _searchEpisodes = [];
+  bool _searchFailed = false;
   List<String> _recentSearches = [];
 
   // Lyrics（按曲目 ID 缓存，避免重复打开歌词页时重复请求）
@@ -85,6 +89,11 @@ class SpotifyProvider extends ChangeNotifier {
   List<SpotifyTrack> get searchTracks => _searchTracks;
   List<SpotifyArtist> get searchArtists => _searchArtists;
   List<SpotifyPlaylist> get searchPlaylists => _searchPlaylists;
+  List<PodcastShow> get searchShows => _searchShows;
+  List<PodcastEpisode> get searchEpisodes => _searchEpisodes;
+
+  /// 最近一次搜索请求失败（网络 / 鉴权）；与「没有结果」区分开展示。
+  bool get searchFailed => _searchFailed;
   List<String> get recentSearches => _recentSearches;
 
   /// 加载主页数据（用户、主页分区、分类、设备）。登录 / 登出后应再次调用。
@@ -166,6 +175,9 @@ class SpotifyProvider extends ChangeNotifier {
       _searchTracks = [];
       _searchArtists = [];
       _searchPlaylists = [];
+      _searchShows = [];
+      _searchEpisodes = [];
+      _searchFailed = false;
       _isSearching = false;
       notifyListeners();
       return;
@@ -181,15 +193,21 @@ class SpotifyProvider extends ChangeNotifier {
 
   Future<void> _runSearch(String query, int generation) async {
     Map<String, List<dynamic>> results = const {};
+    var failed = false;
     try {
       results = await _api.search(query);
-    } catch (_) {}
+    } catch (_) {
+      failed = true;
+    }
 
     if (_disposed || generation != _searchGeneration) return;
 
+    _searchFailed = failed;
     _searchTracks = results['tracks']?.cast<SpotifyTrack>() ?? [];
     _searchArtists = results['artists']?.cast<SpotifyArtist>() ?? [];
     _searchPlaylists = results['playlists']?.cast<SpotifyPlaylist>() ?? [];
+    _searchShows = results['shows']?.cast<PodcastShow>() ?? [];
+    _searchEpisodes = results['episodes']?.cast<PodcastEpisode>() ?? [];
     _isSearching = false;
     notifyListeners();
   }
@@ -261,6 +279,7 @@ class SpotifyProvider extends ChangeNotifier {
   /// 获取歌词（Spotify 官方优先，没有逐行同步歌词时按设置用 LRCLIB 补全，见 [LyricsResolver]）：
   /// 命中缓存直接返回，并发请求合并为同一个 Future。
   Future<SpotifyLyrics> fetchLyrics(LyricsQuery query) {
+    if (query.isEpisode) return Future.value(const SpotifyLyrics(lines: []));
     final generation = _lyricsGeneration;
     final trackId = query.trackId;
     final cached = _lyricsCache[trackId];

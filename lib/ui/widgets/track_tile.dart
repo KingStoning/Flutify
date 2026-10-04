@@ -272,9 +272,10 @@ class TrackTile extends StatelessWidget {
                     ),
                 ],
 
-                // 已点赞常驻；未点赞只在悬停时出现（保留占位，避免时长列左右跳动）
+                // 已点赞常驻；未点赞只在悬停时出现（保留占位，避免时长列左右跳动）。
+                // 播客单集不能点赞：保留占位但不显示按钮
                 _Reveal(
-                  visible: revealed,
+                  visible: revealed && !track.uri.startsWith('spotify:episode:'),
                   fixedExtent: hoverCapable,
                   idle: isLiked
                       ? Icon(

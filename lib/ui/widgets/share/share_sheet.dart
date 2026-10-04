@@ -135,6 +135,8 @@ class _ShareHeader extends StatelessWidget {
       ShareKind.album => l10n.typeAlbum,
       ShareKind.playlist => l10n.typePlaylist,
       ShareKind.artist => l10n.typeArtist,
+      ShareKind.show => l10n.typePodcast,
+      ShareKind.episode => l10n.homeTypeEpisode,
     };
   }
 

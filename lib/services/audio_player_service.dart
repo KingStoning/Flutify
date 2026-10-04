@@ -66,6 +66,8 @@ class AudioPlayerService implements AudioEngine {
   Future<void> pause() => _player.pause();
   Future<void> seek(Duration position) => _player.seek(position);
   Future<void> setVolume(double volume) => _player.setVolume(volume.clamp(0.0, 1.0));
+  @override
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed.clamp(0.5, 3.0));
   Future<void> stop() => _player.stop();
 
   void dispose() {

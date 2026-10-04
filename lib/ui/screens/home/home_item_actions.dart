@@ -54,11 +54,8 @@ class HomeItemActions {
       return;
     }
     final api = context.read<SpotifyApiService>();
-    final episodeId = item.uri.startsWith('spotify:episode:')
-        ? item.uri.substring(16)
-        : item.uri;
     api
-        .getPodcastEpisode(episodeId)
+        .getPodcastEpisode(_episodeId(item))
         .then((episode) {
           if (context.mounted && episode.showUri.isNotEmpty) {
             AppRoutes.openPodcast(
@@ -81,9 +78,13 @@ class HomeItemActions {
         });
   }
 
-  /// 卡片上是否显示播放键（播客 / 单集没有可预取的曲目队列，不显示）。
-  static bool canPlay(HomeItem item) =>
-      item.kind != HomeItemKind.podcast && item.kind != HomeItemKind.episode;
+  static String _episodeId(HomeItem item) =>
+      item.uri.startsWith('spotify:episode:')
+      ? item.uri.substring(16)
+      : item.uri;
+
+  /// 卡片上是否显示播放键（播客节目点开看单集列表，不直接播放；单集可以直接播）。
+  static bool canPlay(HomeItem item) => item.kind != HomeItemKind.podcast;
 
   static Future<void> play(BuildContext context, HomeItem item) async {
     final api = context.read<SpotifyApiService>();
@@ -115,8 +116,15 @@ class HomeItemActions {
         await _guard(() => api.getArtistTopTracks(item.artist!.id)),
         PlaybackContext.artist(item.title, uri: item.uri),
       ),
-      HomeItemKind.podcast ||
-      HomeItemKind.episode => (const <SpotifyTrack>[], PlaybackContext.none),
+      HomeItemKind.episode => (
+        await _guard(
+          () async => [
+            (await api.getPodcastEpisode(_episodeId(item))).toTrack(),
+          ],
+        ),
+        PlaybackContext.none,
+      ),
+      HomeItemKind.podcast => (const <SpotifyTrack>[], PlaybackContext.none),
     };
 
     if (!context.mounted) return;

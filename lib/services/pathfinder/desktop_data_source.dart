@@ -161,14 +161,7 @@ class DesktopDataSource {
   // 搜索
   // ---------------------------------------------------------------------------
 
-  Future<
-    ({
-      List<SpotifyTrack> tracks,
-      List<SpotifyArtist> artists,
-      List<SpotifyPlaylist> playlists,
-    })
-  >
-  search(String term) async {
+  Future<SearchResults> search(String term) async {
     final data = await _pathfinder.query(PathfinderOperation.searchDesktop, {
       'searchTerm': term,
       'offset': 0,

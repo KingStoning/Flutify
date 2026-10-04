@@ -8,10 +8,11 @@ import 'track_metadata.dart';
 /// 字段号经 tool/mercury_probe.dart 实测（2026-10，桌面版会话）：
 /// - 1 = gid（16 字节）；2 = 标题；7 = 时长（毫秒，普通 varint，非 zigzag）；
 /// - 12 = 音频文件（AudioFile：1 = file_id(20B)，2 = format）；
-/// - 64 = 简介；68 = 封面 ImageGroup；71 = 所属节目（1 = gid，2 = 名称）。
+/// - 64 = 简介；68 = 封面 ImageGroup；71 = 所属节目（1 = gid，2 = 名称）；
+/// - 83 = external_url（非 Spotify 托管的节目：原始 RSS 音频地址，librespot metadata.proto）。
 ///
-/// 与曲目的差异：单集音频 AP 不下发音频密钥（错误码 0），文件本身仍是加密存储 ——
-/// 当前无法解密播放，解析结果主要用于展示与「尝试播放 → 友好报错」链路。
+/// 与曲目的差异：单集音频 AP 通常不下发音频密钥（错误码 0）。与 librespot 一致，拿不到密钥时
+/// 按明文下载（多数单集文件本身未加密），由加载器校验文件头；仍不可用时回退 [externalUrl]。
 class EpisodeMetadata {
   final Uint8List gid;
   final String name;
@@ -20,6 +21,9 @@ class EpisodeMetadata {
   final String description;
   final List<TrackAudioFile> files;
 
+  /// 外部托管的原始音频地址（http / https）；没有时为空串。
+  final String externalUrl;
+
   const EpisodeMetadata({
     required this.gid,
     required this.name,
@@ -27,6 +31,7 @@ class EpisodeMetadata {
     this.durationMs = 0,
     this.description = '',
     this.files = const [],
+    this.externalUrl = '',
   });
 
   /// 本集是否带有任何音频文件（不论格式）。
@@ -52,6 +57,7 @@ class EpisodeMetadata {
     var showName = '';
     var durationMs = 0;
     var description = '';
+    var externalUrl = '';
     final files = <TrackAudioFile>[];
 
     ProtoReader(data).forEach((f) {
@@ -84,6 +90,12 @@ class EpisodeMetadata {
         case 64 when f.wireType == 2:
           description = f.asString;
           break;
+        case 83 when f.wireType == 2: // external_url
+          final url = f.asString.trim();
+          if (url.startsWith('https://') || url.startsWith('http://')) {
+            externalUrl = url;
+          }
+          break;
         case 71 when f.wireType == 2: // show
           f.asMessage.forEach((sf) {
             if (sf.number == 2 && sf.wireType == 2) showName = sf.asString;
@@ -99,6 +111,7 @@ class EpisodeMetadata {
       durationMs: durationMs,
       description: description,
       files: files,
+      externalUrl: externalUrl,
     );
   }
 }

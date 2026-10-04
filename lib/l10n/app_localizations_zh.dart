@@ -1418,4 +1418,48 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsGatewayRecheck => '重新查询国家/地区';
+
+  @override
+  String get podcastSkipBack => '后退 10 秒';
+
+  @override
+  String get podcastSkipForward => '快进 30 秒';
+
+  @override
+  String get podcastSpeed => '播放速度';
+
+  @override
+  String podcastSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get podcastFollow => '关注';
+
+  @override
+  String get podcastUnfollow => '取消关注';
+
+  @override
+  String get podcastFollowing => '已关注';
+
+  @override
+  String get podcastMarkPlayed => '标记为已播完';
+
+  @override
+  String get podcastMarkUnplayed => '标记为未播放';
+
+  @override
+  String get podcastLatestHint => '这里只列出节目页提供的部分单集';
+
+  @override
+  String get searchPodcastsAndEpisodes => '播客和单集';
+
+  @override
+  String get libraryPodcastsEmpty => '关注的播客会显示在这里';
+
+  @override
+  String get searchFailedTitle => '搜索失败';
+
+  @override
+  String get searchFailedMessage => '请检查网络连接后重试。';
 }

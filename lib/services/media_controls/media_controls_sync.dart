@@ -153,6 +153,7 @@ class MediaControlsSync {
         album: track.album?.name ?? '',
         artUrl: track.coverUrl,
         duration: duration ?? Duration(milliseconds: track.durationMs),
+        isEpisode: track.uri.startsWith('spotify:episode:'),
       );
 
   void _onEvent(MediaControlEvent event) {

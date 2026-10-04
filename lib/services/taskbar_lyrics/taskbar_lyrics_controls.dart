@@ -207,6 +207,7 @@ class TaskbarLyricsControls implements SystemMediaControls {
     artist: track.artist,
     album: track.album,
     durationMs: track.duration.inMilliseconds,
+    isEpisode: track.isEpisode,
   );
 
   /// 歌词加载器就绪（界面层首次绑定）后补推当前曲目的歌词。

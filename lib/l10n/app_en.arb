@@ -486,5 +486,20 @@
   "@settingsGatewayCountryStatus": {"placeholders": {"country": {"type": "String"}, "route": {"type": "String"}}},
   "settingsGatewayRouteProxy": "Gateway enabled",
   "settingsGatewayRouteDirect": "Direct connection",
-  "settingsGatewayRecheck": "Check country/region again"
+  "settingsGatewayRecheck": "Check country/region again",
+  "podcastSkipBack": "Back 10 seconds",
+  "podcastSkipForward": "Forward 30 seconds",
+  "podcastSpeed": "Playback speed",
+  "podcastSpeedValue": "{speed}×",
+  "@podcastSpeedValue": {"placeholders": {"speed": {"type": "String"}}},
+  "podcastFollow": "Follow",
+  "podcastUnfollow": "Unfollow",
+  "podcastFollowing": "Following",
+  "podcastMarkPlayed": "Mark as played",
+  "podcastMarkUnplayed": "Mark as unplayed",
+  "podcastLatestHint": "Only some of this show's episodes are listed here",
+  "searchPodcastsAndEpisodes": "Podcasts & episodes",
+  "libraryPodcastsEmpty": "Podcasts you follow will show up here",
+  "searchFailedTitle": "Search failed",
+  "searchFailedMessage": "Check your connection and try again."
 }

@@ -53,12 +53,17 @@ class StorageService {
   static const String _keyNormalize = 'play_normalize';
   static const String _keyFadeSeconds = 'play_fade_seconds';
   static const String _keyAudioCacheLimitMb = 'cache_audio_limit_mb';
+  static const String _keyPodcastSpeed = 'play_podcast_speed';
+  static const String _keyEpisodeProgress = 'podcast_episode_progress'; // 单集续播进度 JSON
 
   // 媒体库（JSON 序列化的实体列表）
   static const String keyLibraryLikedTracks = 'lib_liked_tracks';
   static const String keyLibraryPlaylists = 'lib_playlists';
   static const String keyLibraryArtists = 'lib_artists';
   static const String keyLibraryAlbums = 'lib_albums';
+
+  /// 本机关注的播客节目（不随账号同步）。
+  static const String keyLibraryShows = 'lib_shows_local';
 
   /// 用户在本机创建 / 保存的歌单（不随账号同步；远端 rootlist 歌单缓存在 [keyLibraryPlaylists]）。
   static const String keyLibraryLocalPlaylists = 'lib_playlists_local';
@@ -238,6 +243,16 @@ class StorageService {
   int get fadeSeconds => _prefs.getInt(_keyFadeSeconds) ?? 0;
   Future<bool> setFadeSeconds(int value) =>
       _prefs.setInt(_keyFadeSeconds, value);
+
+  /// 播客播放速度（只作用于单集，音乐始终原速），默认 1.0。
+  double get podcastSpeed => _prefs.getDouble(_keyPodcastSpeed) ?? 1.0;
+  Future<bool> setPodcastSpeed(double value) =>
+      _prefs.setDouble(_keyPodcastSpeed, value);
+
+  /// 单集续播进度（EpisodeProgressStore 的 JSON 快照）。
+  String get episodeProgressJson => _prefs.getString(_keyEpisodeProgress) ?? '';
+  Future<bool> setEpisodeProgressJson(String value) =>
+      _prefs.setString(_keyEpisodeProgress, value);
 
   /// 音频缓存上限（MB），默认 512。
   int get audioCacheLimitMb => _prefs.getInt(_keyAudioCacheLimitMb) ?? 512;

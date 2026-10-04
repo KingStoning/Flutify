@@ -96,6 +96,10 @@ class RoutedAudioEngine implements AudioEngine {
     return _local.setVolume(volume);
   }
 
+  /// 变速只对本地引擎生效（单集都走本地引擎）。
+  @override
+  Future<void> setSpeed(double speed) => _local.setSpeed(speed);
+
   @override
   Future<void> stop() => _current.stop();
 

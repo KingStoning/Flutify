@@ -64,13 +64,17 @@ class TrackMenu {
   }
 
   /// 当前情境下可用的操作（菜单与快捷键共用同一判断）。
+  /// 播客单集：没有点赞 / 电台 / 制作人员，「艺人」只是节目名（没有 id），也不能跳转。
   static bool isAvailable(BuildContext context, SpotifyTrack track, TrackAction action) => switch (action) {
-    TrackAction.artist => track.artists.isNotEmpty,
+    TrackAction.like || TrackAction.radio || TrackAction.credits => !_isEpisode(track),
+    TrackAction.artist => !_isEpisode(track) && track.artists.isNotEmpty,
     TrackAction.album => track.album != null && track.album!.id.isNotEmpty,
     TrackAction.share => ShareTarget.track(track).isShareable,
     TrackAction.sleepTimer => context.read<SleepTimerProvider?>() != null,
     _ => true,
   };
+
+  static bool _isEpisode(SpotifyTrack track) => track.uri.startsWith('spotify:episode:');
 
   static Future<void> _showDesktop(BuildContext context, SpotifyTrack track, Offset position) async {
     final l10n = context.l10n;
@@ -84,12 +88,13 @@ class TrackMenu {
 
     final action = await DesktopMenu.show<TrackAction>(context, position, [
       item(TrackAction.addToPlaylist, Icons.add_rounded, l10n.trackAddToPlaylist, sub: true),
-      item(
-        TrackAction.like,
-        liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-        liked ? l10n.likeRemove : l10n.likeAdd,
-        color: liked ? primary : null,
-      ),
+      if (has(TrackAction.like))
+        item(
+          TrackAction.like,
+          liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          liked ? l10n.likeRemove : l10n.likeAdd,
+          color: liked ? primary : null,
+        ),
       item(TrackAction.queue, Icons.queue_music_rounded, l10n.trackAddToQueue),
       if (has(TrackAction.sleepTimer))
         item(
@@ -100,11 +105,11 @@ class TrackMenu {
           sub: true,
         ),
       DesktopMenu.divider,
-      item(TrackAction.radio, Icons.sensors_rounded, l10n.trackGoToRadio),
+      if (has(TrackAction.radio)) item(TrackAction.radio, Icons.sensors_rounded, l10n.trackGoToRadio),
       if (has(TrackAction.artist))
         item(TrackAction.artist, Icons.person_outline_rounded, l10n.trackGoToArtist(track.artists.length)),
       if (has(TrackAction.album)) item(TrackAction.album, Icons.album_outlined, l10n.trackGoToAlbum),
-      item(TrackAction.credits, Icons.groups_outlined, l10n.trackViewCredits),
+      if (has(TrackAction.credits)) item(TrackAction.credits, Icons.groups_outlined, l10n.trackViewCredits),
       if (has(TrackAction.share)) ...[
         DesktopMenu.divider,
         item(TrackAction.share, Icons.ios_share_rounded, l10n.commonShare),

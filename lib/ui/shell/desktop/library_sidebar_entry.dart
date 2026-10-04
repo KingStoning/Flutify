@@ -6,7 +6,7 @@ import '../../../providers/library_provider.dart';
 import '../../navigation/app_routes.dart';
 
 /// 音乐库栏的筛选类型。
-enum LibraryKind { playlist, album, artist }
+enum LibraryKind { playlist, album, artist, podcast }
 
 /// 音乐库栏的排序方式。
 enum LibrarySort { recent, alphabetical }
@@ -41,7 +41,7 @@ class LibrarySidebarEntry {
   ///
   /// 规则（对齐 Spotify 桌面端）：
   /// - 「已点赞的歌曲」固定置顶，只在「全部 / 歌单」筛选下出现，不参与排序与搜索过滤外的变化；
-  /// - 最近添加：保持各类型在媒体库中的原始顺序（最新在前），类型之间按 歌单 → 专辑 → 艺人；
+  /// - 最近添加：保持各类型在媒体库中的原始顺序（最新在前），类型之间按 歌单 → 专辑 → 艺人 → 播客；
   /// - 按字母顺序：对非置顶条目按标题排序（中文按拼音）；
   /// - 搜索：标题或副标题包含关键词（不区分大小写）。
   static List<LibrarySidebarEntry> build({
@@ -101,6 +101,20 @@ class LibrarySidebarEntry {
           subtitle: l10n.typeArtist,
           imageUrl: a.avatarUrl,
           open: (context) => AppRoutes.openArtist(context, a),
+        ));
+      }
+    }
+    if (filter == null || filter == LibraryKind.podcast) {
+      for (final s in library.shows) {
+        entries.add(LibrarySidebarEntry(
+          id: s.id,
+          uri: s.uri,
+          kind: LibraryKind.podcast,
+          title: s.name,
+          subtitle: l10n.subtitleJoin(l10n.typePodcast, s.publisher),
+          imageUrl: s.coverUrl,
+          open: (context) =>
+              AppRoutes.openPodcast(context, s.uri, initialTitle: s.name, initialCover: s.coverUrl),
         ));
       }
     }

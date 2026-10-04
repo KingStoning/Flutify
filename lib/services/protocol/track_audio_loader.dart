@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'access_point.dart';
@@ -288,6 +290,12 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     if (progress != null) download.addProgressListener(progress);
     try {
       await download.ready;
+    } on UnrecognizedAudioException catch (e) {
+      throw TrackPlaybackException(
+        TrackPlaybackFailure.unavailable,
+        '这集播客的音频受加密保护，暂不支持播放',
+        e,
+      );
     } catch (e) {
       throw TrackPlaybackException(
         TrackPlaybackFailure.network,
@@ -352,6 +360,7 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     final List<({TrackAudioFile file, Uint8List gid})> candidates;
     final bool hasAnyFile;
     final int? durationMs;
+    var externalUrl = '';
     if (isEpisode) {
       final EpisodeMetadata meta;
       try {
@@ -368,6 +377,7 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
       candidates = meta.candidateFiles(formatPreference);
       hasAnyFile = meta.hasAnyFile;
       durationMs = meta.durationMs > 0 ? meta.durationMs : null;
+      externalUrl = meta.externalUrl;
     } else {
       final TrackMetadata meta;
       try {
@@ -386,6 +396,10 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
       durationMs = meta.durationMs > 0 ? meta.durationMs : null;
     }
     if (candidates.isEmpty) {
+      // 非 Spotify 托管的单集：只有外部 RSS 音频地址
+      if (externalUrl.isNotEmpty) {
+        return _externalSession(id, externalUrl, durationMs);
+      }
       // 有音频文件但都不是 OGG/MP3（FLAC / AAC 走 Widevine DRM，AP 不下发密钥）
       throw TrackPlaybackException(
         TrackPlaybackFailure.unavailable,
@@ -448,12 +462,20 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
         );
       }
     }
-    if (file == null || key == null) {
+    final DecryptSpec decrypt;
+    var plain = false;
+    if (file != null && key != null) {
+      decrypt = AesCtrDecryptSpec(key: key, iv: kAudioAesIv);
+    } else if (isEpisode) {
+      // 单集拿不到密钥是常态：与 librespot 一致按明文下载（多数单集文件未加密），
+      // 文件头不像音频时判定为加密文件，再回退外部地址
+      file = candidates.first.file;
+      decrypt = const PassthroughDecryptSpec();
+      plain = true;
+    } else {
       throw TrackPlaybackException(
         TrackPlaybackFailure.unavailable,
-        isEpisode
-            ? '这集播客暂时无法播放（音频密钥受限，完整播放即将支持）'
-            : '这首歌暂时无法播放（可能需要 Premium 或受版权限制）',
+        '这首歌暂时无法播放（可能需要 Premium 或受版权限制）',
         keyError,
       );
     }
@@ -467,20 +489,102 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
         client: _client,
       )).cdnUrls;
     } catch (e) {
+      if (plain && externalUrl.isNotEmpty) {
+        return _externalSession(id, externalUrl, durationMs);
+      }
       throw TrackPlaybackException(
         TrackPlaybackFailure.network,
         '音频下载失败，请检查网络后重试',
         e,
       );
     }
-    final destination = _cacheFile(file);
     final download = ProgressiveDownload(
       urls: cdnUrls,
-      decrypt: AesCtrDecryptSpec(key: key, iv: kAudioAesIv),
+      decrypt: decrypt,
       backend: decryptBackend,
       format: file.format,
       client: _client,
+      validateHead: plain ? SpotifyAudioHeader.looksLikePlainAudio : null,
     )..start();
+    final session = _downloadSession(id, file, durationMs, download);
+    if (plain) {
+      // 等文件头到达再交出会话：确认是明文才能播放 / 落盘
+      try {
+        await download.ready;
+      } on UnrecognizedAudioException {
+        if (externalUrl.isNotEmpty) {
+          return _externalSession(id, externalUrl, durationMs);
+        }
+        throw const TrackPlaybackException(
+          TrackPlaybackFailure.unavailable,
+          '这集播客的音频受加密保护，暂不支持播放',
+        );
+      } catch (_) {
+        // 网络类失败交给 open / load 统一报告
+      }
+    }
+    return session;
+  }
+
+  /// 外部托管的单集音频（RSS 原始地址，明文）：按地址的 SHA-1 作缓存键，下载方式与 CDN 相同。
+  Future<_AudioSession> _externalSession(
+    SpotifyId id,
+    String url,
+    int? durationMs,
+  ) async {
+    final file = TrackAudioFile(
+      fileId: Uint8List.fromList(sha1.convert(utf8.encode(url)).bytes),
+      format: externalAudioFormat(url),
+    );
+    final cached = _cacheFile(file);
+    if (cached.existsSync() && cached.lengthSync() > 0) {
+      try {
+        cached.setLastModifiedSync(DateTime.now());
+      } catch (_) {}
+      return _AudioSession.cached(_loaded(cached, file, durationMs, id), id);
+    }
+    final download = ProgressiveDownload(
+      urls: [url],
+      decrypt: const PassthroughDecryptSpec(),
+      backend: decryptBackend,
+      format: file.format,
+      client: _client,
+      validateHead: SpotifyAudioHeader.looksLikePlainAudio,
+    )..start();
+    final session = _downloadSession(id, file, durationMs, download);
+    try {
+      await download.ready;
+    } on UnrecognizedAudioException {
+      throw const TrackPlaybackException(
+        TrackPlaybackFailure.unavailable,
+        '这集播客的音频格式无法识别，暂不支持播放',
+      );
+    } catch (_) {
+      // 网络类失败交给 open / load 统一报告
+    }
+    return session;
+  }
+
+  /// 外部音频地址 → 文件格式（只决定缓存扩展名与 MIME；未知按 MP3）。
+  static AudioFileFormat externalAudioFormat(String url) {
+    final path = (Uri.tryParse(url)?.path ?? '').toLowerCase();
+    if (path.endsWith('.m4a') || path.endsWith('.mp4') || path.endsWith('.aac')) {
+      return AudioFileFormat.aac48;
+    }
+    if (path.endsWith('.ogg') || path.endsWith('.oga') || path.endsWith('.opus')) {
+      return AudioFileFormat.oggVorbis160;
+    }
+    return AudioFileFormat.mp3_160;
+  }
+
+  /// 正在下载的会话：下载完成后落盘并淘汰旧缓存。
+  _AudioSession _downloadSession(
+    SpotifyId id,
+    TrackAudioFile file,
+    int? durationMs,
+    ProgressiveDownload download,
+  ) {
+    final destination = _cacheFile(file);
     final session = _AudioSession.downloading(
       id: id,
       file: file,
@@ -488,11 +592,15 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
       download: download,
       destination: destination,
     );
-    final source = file;
     session.persisted = () async {
       try {
         await download.done;
         await _persist(download, destination);
+      } on UnrecognizedAudioException {
+        throw const TrackPlaybackException(
+          TrackPlaybackFailure.unavailable,
+          '这集播客的音频受加密保护，暂不支持播放',
+        );
       } catch (e) {
         throw TrackPlaybackException(
           TrackPlaybackFailure.network,
@@ -500,7 +608,7 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
           e,
         );
       }
-      final result = _loaded(destination, source, durationMs, id);
+      final result = _loaded(destination, file, durationMs, id);
       _trimCache();
       return result;
     }();
