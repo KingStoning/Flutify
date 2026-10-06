@@ -666,6 +666,10 @@ class PlaybackProvider extends ChangeNotifier {
     SpotifyTrack track,
     TrackPlaybackException failure,
   ) async {
+    debugPrint(
+      '[playback] 加载失败 ${track.uri}：${failure.kind.name} ${failure.message}'
+      '${failure.cause == null ? '' : '（${failure.cause}）'}',
+    );
     final failures = _consecutiveSkips + 1;
     final hitLimit =
         failure.shouldSkip && _pauseAfterFailures && failures >= failureLimit;
