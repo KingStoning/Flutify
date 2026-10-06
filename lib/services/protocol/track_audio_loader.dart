@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 
 import 'access_point.dart';
@@ -362,12 +363,15 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     final int? durationMs;
     var externalUrl = '';
     if (isEpisode) {
+      _episodeLog('开始加载 ${id.toBase62()}');
       final EpisodeMetadata meta;
       try {
         meta = await fetchEpisodeMetadata(id);
-      } on TrackPlaybackException {
+      } on TrackPlaybackException catch (e) {
+        _episodeLog('元数据失败：${e.message}（${e.cause}）');
         rethrow;
       } catch (e) {
+        _episodeLog('元数据失败：$e');
         throw TrackPlaybackException(
           TrackPlaybackFailure.network,
           '获取单集信息失败，请检查网络',
@@ -378,6 +382,10 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
       hasAnyFile = meta.hasAnyFile;
       durationMs = meta.durationMs > 0 ? meta.durationMs : null;
       externalUrl = meta.externalUrl;
+      _episodeLog(
+        '${id.toBase62()} 元数据：文件 [${meta.files.map((f) => f.format.name).join(', ')}]，'
+        '可用 ${candidates.length} 个，外部地址 ${_hostOf(externalUrl)}',
+      );
     } else {
       final TrackMetadata meta;
       try {
@@ -398,6 +406,7 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     if (candidates.isEmpty) {
       // 非 Spotify 托管的单集：只有外部 RSS 音频地址
       if (externalUrl.isNotEmpty) {
+        _episodeLog('没有可用的 Spotify 文件，改用外部地址');
         return _externalSession(id, externalUrl, durationMs);
       }
       // 有音频文件但都不是 OGG/MP3（FLAC / AAC 走 Widevine DRM，AP 不下发密钥）
@@ -453,7 +462,9 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
         break;
       } on ApKeyException catch (e) {
         keyError = e;
+        if (isEpisode) _episodeLog('密钥被拒（${c.file.format.name}）：$e');
       } catch (e) {
+        if (isEpisode) _episodeLog('请求密钥失败：$e');
         _disposeAccessPoint();
         throw TrackPlaybackException(
           TrackPlaybackFailure.network,
@@ -466,7 +477,9 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     var plain = false;
     if (file != null && key != null) {
       decrypt = AesCtrDecryptSpec(key: key, iv: kAudioAesIv);
+      if (isEpisode) _episodeLog('拿到密钥（${file.format.name}），按加密文件下载');
     } else if (isEpisode) {
+      _episodeLog('没有密钥，按明文下载 ${candidates.first.file.format.name}');
       // 单集拿不到密钥是常态：与 librespot 一致按明文下载（多数单集文件未加密），
       // 文件头不像音频时判定为加密文件，再回退外部地址
       file = candidates.first.file;
@@ -489,6 +502,7 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
         client: _client,
       )).cdnUrls;
     } catch (e) {
+      if (isEpisode) _episodeLog('CDN 地址解析失败：$e');
       if (plain && externalUrl.isNotEmpty) {
         return _externalSession(id, externalUrl, durationMs);
       }
@@ -511,16 +525,20 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
       // 等文件头到达再交出会话：确认是明文才能播放 / 落盘
       try {
         await download.ready;
+        _episodeLog('文件头校验通过，开始播放');
       } on UnrecognizedAudioException {
+        _episodeLog('文件头不是明文音频（文件是加密的）');
         if (externalUrl.isNotEmpty) {
+          _episodeLog('改用外部地址');
           return _externalSession(id, externalUrl, durationMs);
         }
         throw const TrackPlaybackException(
           TrackPlaybackFailure.unavailable,
           '这集播客的音频受加密保护，暂不支持播放',
         );
-      } catch (_) {
+      } catch (e) {
         // 网络类失败交给 open / load 统一报告
+        _episodeLog('下载失败：$e');
       }
     }
     return session;
@@ -554,7 +572,9 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     final session = _downloadSession(id, file, durationMs, download);
     try {
       await download.ready;
+      _episodeLog('外部地址 ${_hostOf(url)} 下载正常，开始播放');
     } on UnrecognizedAudioException {
+      _episodeLog('外部地址 ${_hostOf(url)} 返回的不是音频');
       throw const TrackPlaybackException(
         TrackPlaybackFailure.unavailable,
         '这集播客的音频格式无法识别，暂不支持播放',
@@ -564,6 +584,12 @@ class TrackAudioLoader implements TrackAudioSource, AudioCacheStore {
     }
     return session;
   }
+
+  /// 单集链路诊断日志（App 日志里以 [episode] 开头；外部地址只记域名，可能带订阅参数）。
+  static void _episodeLog(String message) => debugPrint('[episode] $message');
+
+  static String _hostOf(String url) =>
+      url.isEmpty ? '(无)' : (Uri.tryParse(url)?.host ?? '(无法解析)');
 
   /// 外部音频地址 → 文件格式（只决定缓存扩展名与 MIME；未知按 MP3）。
   static AudioFileFormat externalAudioFormat(String url) {
