@@ -6,7 +6,8 @@
 //   flutter test test/manual/episode_play_probe_test.dart
 //   传节目时依次试该节目页上的前 3 集。
 // 可选：$env:FLUTIFY_PREFS = "<shared_preferences.json 路径>"
-//   （默认 %APPDATA%\com.flutify.music\flutify_app\shared_preferences.json）
+//   （默认依次找 %APPDATA%\Flutify\Flutify\ 与 %APPDATA%\com.flutify.music\flutify_app\ 下的 shared_preferences.json）
+// 登录令牌约一小时过期：运行前先打开 App 并播放一首歌，让 App 刷新令牌。
 //
 // 输出不含任何令牌，可以直接贴给开发者：
 //   - Mercury 元数据：音频文件格式列表、external_url 的域名；
@@ -35,8 +36,14 @@ Future<void> _probe(String input, String? prefsPath) async {
     fail('无法解析 id：$input');
   }
 
-  prefsPath ??=
-      '${Platform.environment['APPDATA']}\\com.flutify.music\\flutify_app\\shared_preferences.json';
+  // 发布版（安装包 / 便携版）存在 %APPDATA%\\Flutify\\Flutify；旧的开发构建存在 com.flutify.music\\flutify_app
+  final appData = Platform.environment['APPDATA'] ?? '';
+  prefsPath ??= [
+    '$appData\\Flutify\\Flutify\\shared_preferences.json',
+    '$appData\\com.flutify.music\\flutify_app\\shared_preferences.json',
+  ].firstWhere((path) => File(path).existsSync(), orElse: () => '');
+  if (prefsPath.isEmpty) fail('没有找到 App 的设置文件：请先在 App 里登录（或用 FLUTIFY_PREFS 指定）');
+  stdout.writeln('登录态来自：$prefsPath');
   final prefs = jsonDecode(File(prefsPath).readAsStringSync()) as Map<String, dynamic>;
   final token = prefs['flutter.sp_access_token'] as String? ?? '';
   final clientToken = prefs['flutter.sp_client_token'] as String? ?? '';
